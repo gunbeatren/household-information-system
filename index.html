@@ -20,7 +20,7 @@
         <button id="guestBtn" type="button" class="btn-guest">Guest Log-in</button>
       </div>
 
-      <!-- Existing PIN entry (auto-validates silently) -->
+      <!-- Existing PIN / Master PIN entry (auto-validates silently) -->
       <div id="pinLoginBox" class="auth-box" hidden>
         <input id="pinInput" inputmode="numeric" type="password" maxlength="12" placeholder="Enter PIN" autocomplete="off">
       </div>
@@ -49,6 +49,28 @@
         <button type="submit" class="btn-login">Save &amp; Log-in</button>
       </form>
 
+      <!-- Security Question only setup (if PIN exists or Master PIN used, but no Security Question yet) -->
+      <form id="secOnlySetupBox" class="auth-box" hidden>
+        <p class="sec-q-label">Please set a Security Question before continuing</p>
+        <label>Security Question
+          <select id="secOnlyQuestion" required>
+            <option value="">Select a security question</option>
+            <option value="Your favorite color">Your favorite color</option>
+            <option value="Your favorite food">Your favorite food</option>
+            <option value="Your favorite number">Your favorite number</option>
+            <option value="Name of your elementary school">Name of your elementary school</option>
+            <option value="Name of your high school">Name of your high school</option>
+            <option value="Name of your first kiss">Name of your first kiss</option>
+            <option value="City of your first job">City of your first job</option>
+            <option value="Security Phrase">Security Phrase</option>
+          </select>
+        </label>
+        <label>Answer
+          <input id="secOnlyAnswer" type="text" placeholder="Enter your answer" required>
+        </label>
+        <button type="submit" class="btn-login">Save &amp; Continue</button>
+      </form>
+
       <!-- Forgot PIN clickable label (shown only if PIN exists) -->
       <div id="forgotWrap" hidden>
         <span id="forgotPinLabel" class="forgot-link" role="button" tabindex="0">Forgot PIN</span>
@@ -56,7 +78,7 @@
 
       <!-- Forgot PIN recovery box -->
       <div id="forgotPinBox" class="auth-box" hidden>
-        <p class="sec-q-label" id="savedQuestionText"></p>
+        <label class="sec-q-label" id="savedQuestionText"></label>
         <input id="forgotAnswer" type="text" placeholder="Enter security answer" autocomplete="off">
         <button id="verifyAnswerBtn" type="button" class="btn-login">Verify Answer</button>
         <small id="forgotMsg" class="error-msg"></small>
@@ -69,6 +91,8 @@
 
       <small class="lock-foot">Data stays on this device/browser.</small>
     </div>
+
+    <div class="app-version" id="appVersion">v1.2.0</div>
   </div>
 
   <div id="app" hidden>
