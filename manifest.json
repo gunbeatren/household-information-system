@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Household Information System",
-  "short_name": "Household HIS",
-  "description": "Offline resident and household information manager",
+  "name": "OFFLINE Household Information",
+  "short_name": "ANABU 2C HIS",
+  "description": "Anabu II-C Resident Registry",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
