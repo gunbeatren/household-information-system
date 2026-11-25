@@ -48,20 +48,84 @@ fieldset label{margin-bottom:9px}
 .formactions{display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:white;padding-top:12px}
 
 /* Login Page */
-.lock{position:fixed;inset:0;background:url('Pulo.jpg') center/cover no-repeat;display:grid;place-items:center;z-index:10;padding:20px;overflow:auto}
-.lockcard{background:rgba(255,255,255,0.92);backdrop-filter:blur(6px);border:1px solid var(--border);border-radius:20px;padding:28px;max-width:420px;width:100%;text-align:center;box-shadow:0 12px 36px rgba(0,0,0,0.2)}
-.lock-icon{width:76px;height:76px;border-radius:16px;object-fit:cover;display:block;margin:0 auto 14px}
-.lockcard h1{font-size:22px;margin:0 0 6px;color:var(--text)}
-.registry-sub{font-weight:normal;font-size:15px;color:var(--muted);margin:0 0 20px}
+.lock{
+  position:fixed;
+  inset:0;
+  background:url('Pulo.jpg') center 68%/cover no-repeat;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-end;
+  z-index:10;
+  padding:clamp(22vh, 26vh, 32vh) 20px clamp(42px, 6vh, 64px);
+  overflow-y:auto;
+}
+.lockcard{
+  background:rgba(255,255,255,0.72);
+  backdrop-filter:blur(6px);
+  border:1px solid rgba(220,229,223,0.85);
+  border-radius:20px;
+  padding:clamp(18px, 3vh, 28px);
+  max-width:420px;
+  width:100%;
+  text-align:center;
+  box-shadow:0 12px 36px rgba(0,0,0,0.22);
+}
+.lock-icon{width:clamp(56px, 9vh, 76px);height:clamp(56px, 9vh, 76px);border-radius:16px;object-fit:cover;display:block;margin:0 auto 12px}
+.lockcard h1{font-size:clamp(18px, 2.6vh, 22px);margin:0 0 6px;color:var(--text)}
+.registry-sub{font-weight:normal;font-size:clamp(13px, 1.9vh, 15px);color:#2d3d35;margin:0 0 18px}
 .login-actions{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:14px}
-.btn-login{width:100%;height:30px;background:green;color:#fff;border:0;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0 16px}
-.btn-guest{width:100%;height:20px;background:red;color:#fff;border:0;border-radius:8px;font-weight:700;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0 12px}
+.btn-login{
+  width:100%;
+  height:clamp(46px, 7.5vh, 60px);
+  background:green;
+  color:#fff;
+  border:0;
+  border-radius:10px;
+  font-weight:700;
+  font-size:clamp(14px, 2vh, 16px);
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0 16px;
+}
+.btn-guest{
+  width:100%;
+  height:clamp(38px, 6.2vh, 50px);
+  background:red;
+  color:#fff;
+  border:0;
+  border-radius:10px;
+  font-weight:700;
+  font-size:clamp(13px, 1.8vh, 15px);
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0 12px;
+}
 .auth-box{margin-top:12px;text-align:left;display:flex;flex-direction:column;gap:8px}
 .auth-box[hidden]{display:none}
-.forgot-link{display:inline-block;margin-top:8px;color:var(--green);font-size:13px;font-weight:600;text-decoration:underline;cursor:pointer}
+.forgot-link{display:inline-block;margin-top:8px;color:var(--green);font-size:13px;font-weight:700;text-decoration:underline;cursor:pointer}
 .sec-q-label{margin:0;font-size:13px;font-weight:600;color:var(--text)}
 .error-msg{color:#a12b2b;font-size:12px;min-height:14px}
-.lock-foot{display:block;margin-top:16px;color:var(--muted);font-size:12px}
+.lock-foot{display:block;margin-top:14px;color:#2d3d35;font-size:12px}
+.app-version{
+  position:fixed;
+  bottom:10px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:12px;
+  font-weight:600;
+  color:#fff;
+  background:rgba(0,0,0,0.45);
+  padding:3px 10px;
+  border-radius:20px;
+  letter-spacing:0.4px;
+  z-index:12;
+  pointer-events:none;
+}
 
 .profilegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .profileitem{padding:10px;background:#f7faf8;border-radius:9px}
