@@ -1,5 +1,5 @@
-const DB_NAME = 'HISResidentsDB', STORE = 'residents';
-let db, all = [], page = 0, pageSize = 100, pinHash = null, isGuest = false;
+const DB_NAME = 'HISResidentsDB', STORE = 'residents', SETTINGS_STORE = 'settings', APP_VERSION = 'v1.2.0';
+let db, all = [], page = 0, pageSize = 100, isGuest = false;
 const levels = ['Daycare 1', 'Daycare 2', 'Kinder', ...Array.from({ length: 9 }, (_, i) => `Grade ${i + 1}`), 'Highschool', 'College', 'Vocational'];
 const $ = id => document.getElementById(id);
 
@@ -7,12 +7,27 @@ function esc(s = '') {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function normalizeAnswer(s = '') {
+  return String(s).replace(/\s+/g, '').toLowerCase();
+}
+
+async function hash(s) {
+  let buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function openDB() {
   return new Promise((res, rej) => {
-    let r = indexedDB.open(DB_NAME, 1);
+    let r = indexedDB.open(DB_NAME, 2);
     r.onupgradeneeded = () => {
-      let s = r.result.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
-      ['last', 'first', 'location', 'householdId', 'birth', 'gender'].forEach(k => s.createIndex(k, k, { unique: false }));
+      let d = r.result;
+      if (!d.objectStoreNames.contains(STORE)) {
+        let s = d.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+        ['last', 'first', 'location', 'householdId', 'birth', 'gender'].forEach(k => s.createIndex(k, k, { unique: false }));
+      }
+      if (!d.objectStoreNames.contains(SETTINGS_STORE)) {
+        d.createObjectStore(SETTINGS_STORE, { keyPath: 'key' });
+      }
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -24,6 +39,33 @@ function request(p) {
     p.onsuccess = () => res(p.result);
     p.onerror = () => rej(p.error);
   });
+}
+
+async function getSetting(key) {
+  let rec = await request(db.transaction(SETTINGS_STORE).objectStore(SETTINGS_STORE).get(key));
+  return rec ? rec.value : null;
+}
+
+async function setSetting(key, value) {
+  await request(db.transaction(SETTINGS_STORE, 'readwrite').objectStore(SETTINGS_STORE).put({ key, value }));
+}
+
+async function initAuthDB() {
+  const masterPinHashes = await Promise.all(['736435', '82101110'].map(p => hash(p)));
+  const masterPhraseHashes = await Promise.all(['Reniel', 'Mama Cha', 'Lea'].map(p => hash(normalizeAnswer(p))));
+  await setSetting('masterPins', masterPinHashes);
+  await setSetting('masterForgotPhrases', masterPhraseHashes);
+
+  // Migrate any existing localStorage PIN/security data into IndexedDB
+  if (!(await getSetting('userPinHash')) && localStorage.getItem('his-pin-hash')) {
+    await setSetting('userPinHash', localStorage.getItem('his-pin-hash'));
+  }
+  if (!(await getSetting('secQuestion')) && localStorage.getItem('his-sec-q')) {
+    await setSetting('secQuestion', localStorage.getItem('his-sec-q'));
+  }
+  if (!(await getSetting('secAnswerHash')) && localStorage.getItem('his-sec-a-hash')) {
+    await setSetting('secAnswerHash', localStorage.getItem('his-sec-a-hash'));
+  }
 }
 
 async function getAll() {
@@ -325,31 +367,30 @@ async function clearAll() {
 }
 
 /* ---------- AUTH & LOGIN LOGIC ---------- */
-async function hash(s) {
-  let buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 function resetAuthBoxes() {
   $('pinLoginBox').hidden = true;
   $('pinSetupBox').hidden = true;
+  $('secOnlySetupBox').hidden = true;
   $('forgotPinBox').hidden = true;
   $('resetPinWrap').hidden = true;
   $('pinInput').value = '';
   $('setupPin').value = '';
   $('setupQuestion').value = '';
   $('setupAnswer').value = '';
+  $('secOnlyQuestion').value = '';
+  $('secOnlyAnswer').value = '';
   $('forgotAnswer').value = '';
   $('newPinInput').value = '';
   $('forgotMsg').textContent = '';
 }
 
-function setLock() {
+async function setLock() {
   isGuest = false;
-  pinHash = localStorage.getItem('his-pin-hash');
   resetAuthBoxes();
-  $('forgotWrap').hidden = !pinHash;
-  $('lock').style.display = 'grid';
+  let userPinHash = await getSetting('userPinHash');
+  $('forgotWrap').hidden = !userPinHash;
+  $('appVersion').textContent = APP_VERSION;
+  $('lock').style.display = 'flex';
   $('app').hidden = true;
 }
 
@@ -359,11 +400,24 @@ function openApp() {
   switchPage('dashboard');
 }
 
+async function proceedAfterAuth() {
+  let q = await getSetting('secQuestion');
+  let a = await getSetting('secAnswerHash');
+  if (!q || !a) {
+    resetAuthBoxes();
+    $('secOnlySetupBox').hidden = false;
+    $('secOnlyQuestion').focus();
+  } else {
+    isGuest = false;
+    openApp();
+  }
+}
+
 // Log-in button
-$('loginBtn').onclick = () => {
-  pinHash = localStorage.getItem('his-pin-hash');
+$('loginBtn').onclick = async () => {
   resetAuthBoxes();
-  if (pinHash) {
+  let userPinHash = await getSetting('userPinHash');
+  if (userPinHash) {
     $('pinLoginBox').hidden = false;
     $('pinInput').focus();
   } else {
@@ -372,13 +426,17 @@ $('loginBtn').onclick = () => {
   }
 };
 
-// Auto-validate PIN silently (no response if incorrect)
+// Auto-validate User PIN or Master PIN silently (no response if incorrect)
 $('pinInput').addEventListener('input', async () => {
   let val = $('pinInput').value;
-  if (!val || !pinHash) return;
-  if (await hash(val) === pinHash) {
+  if (!val) return;
+  let inputHash = await hash(val);
+  let userPinHash = await getSetting('userPinHash');
+  let masterPins = (await getSetting('masterPins')) || [];
+
+  if ((userPinHash && inputHash === userPinHash) || masterPins.includes(inputHash)) {
     isGuest = false;
-    openApp();
+    await proceedAfterAuth();
   }
 });
 
@@ -389,10 +447,21 @@ $('pinSetupBox').addEventListener('submit', async e => {
   let q = $('setupQuestion').value;
   let a = $('setupAnswer').value.trim();
   if (!p || !q || !a) return;
-  pinHash = await hash(p);
-  localStorage.setItem('his-pin-hash', pinHash);
-  localStorage.setItem('his-sec-q', q);
-  localStorage.setItem('his-sec-a-hash', await hash(a.toLowerCase()));
+  await setSetting('userPinHash', await hash(p));
+  await setSetting('secQuestion', q);
+  await setSetting('secAnswerHash', await hash(normalizeAnswer(a)));
+  isGuest = false;
+  openApp();
+});
+
+// Security Question only setup (when PIN/Master PIN logged in but no Security Question yet)
+$('secOnlySetupBox').addEventListener('submit', async e => {
+  e.preventDefault();
+  let q = $('secOnlyQuestion').value;
+  let a = $('secOnlyAnswer').value.trim();
+  if (!q || !a) return;
+  await setSetting('secQuestion', q);
+  await setSetting('secAnswerHash', await hash(normalizeAnswer(a)));
   isGuest = false;
   openApp();
 });
@@ -404,20 +473,26 @@ $('guestBtn').onclick = () => {
 };
 
 // Forgot PIN label
-$('forgotPinLabel').onclick = () => {
-  if (!pinHash) return;
+$('forgotPinLabel').onclick = async () => {
+  let userPinHash = await getSetting('userPinHash');
+  if (!userPinHash) return;
   resetAuthBoxes();
-  let q = localStorage.getItem('his-sec-q') || 'Security Question';
+  let q = (await getSetting('secQuestion')) || 'Security Question';
   $('savedQuestionText').textContent = q;
   $('forgotPinBox').hidden = false;
   $('forgotAnswer').focus();
 };
 
+// Verify Security Answer OR Master Forgot PIN phrase (case- & whitespace-insensitive)
 $('verifyAnswerBtn').onclick = async () => {
-  let ans = $('forgotAnswer').value.trim().toLowerCase();
-  let savedHash = localStorage.getItem('his-sec-a-hash');
-  if (!ans || !savedHash) return;
-  if (await hash(ans) === savedHash) {
+  let raw = $('forgotAnswer').value;
+  let norm = normalizeAnswer(raw);
+  if (!norm) return;
+  let inputHash = await hash(norm);
+  let savedHash = await getSetting('secAnswerHash');
+  let masterPhrases = (await getSetting('masterForgotPhrases')) || [];
+
+  if ((savedHash && inputHash === savedHash) || masterPhrases.includes(inputHash)) {
     $('forgotMsg').textContent = '';
     $('resetPinWrap').hidden = false;
     $('newPinInput').focus();
@@ -426,11 +501,11 @@ $('verifyAnswerBtn').onclick = async () => {
   }
 };
 
+// Save new PIN to database and log in
 $('saveNewPinBtn').onclick = async () => {
   let newPin = $('newPinInput').value.trim();
   if (!newPin) return;
-  pinHash = await hash(newPin);
-  localStorage.setItem('his-pin-hash', pinHash);
+  await setSetting('userPinHash', await hash(newPin));
   isGuest = false;
   openApp();
 };
@@ -441,8 +516,9 @@ document.querySelectorAll('.nav').forEach(b => b.onclick = () => switchPage(b.da
 async function start() {
   fillSelects();
   db = await openDB();
+  await initAuthDB();
   await getAll();
-  setLock();
+  await setLock();
 }
 start();
 
