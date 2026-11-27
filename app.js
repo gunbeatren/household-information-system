@@ -1,4 +1,4 @@
-const DB_NAME = 'HISResidentsDB', STORE = 'residents', SETTINGS_STORE = 'settings', APP_VERSION = 'v1.4.0';
+const DB_NAME = 'HISResidentsDB', STORE = 'residents', SETTINGS_STORE = 'settings', APP_VERSION = 'v1.5.0';
 let db, all = [], page = 0, pageSize = 100, isGuest = false, pendingDeleteId = null;
 let currentHeaderTitle = 'OFFLINE Household Information';
 let currentHeaderSub = 'Anabu II-C Resident Registry';
@@ -14,10 +14,25 @@ const SUBLOC_MAP = {
   '2-C Proper': ['Elysian Subdivision', '2-C Proper']
 };
 
+const LOC_CODE_MAP = {
+  'Sitio Pulo': 'PULO',
+  '2-C Proper': 'PROP',
+  'Pallas Athena': 'ATHE'
+};
+
+const SUBLOC_CODE_MAP = {
+  'Bungad': 'B',
+  'Gitna': 'G',
+  'Palayan': 'P',
+  'Dulo': 'D',
+  'Elysian Subdivision': 'E',
+  '2-C Proper': 'PR'
+};
+
 const fields = [
   'last', 'first', 'middle', 'suffix', 'birth', 'gender', 'contact', 'email', 'religion', 'nationality',
   'lgbtqia', 'pwd', 'disability',
-  'location', 'subloc', 'blockNo', 'lotNo', 'phaseNo', 'address', 'householdId', 'head', 'relationship',
+  'location', 'subloc', 'blockNo', 'lotNo', 'phaseNo', 'housingTenure', 'address', 'householdId', 'head', 'relationship',
   'civil', 'spouse', 'solo', 'children', 'fourPs', 'tupad', 'imusVoter',
   'enrolled', 'currentLevel', 'highest',
   'employed', 'employmentType', 'work', 'employerName', 'workPlace'
@@ -30,7 +45,7 @@ const fieldLabels = {
   lgbtqia: 'LGBTQIA++', pwd: 'PWD', disability: 'Disability',
   location: 'Location', subloc: 'Area/Sub-location',
   blockNo: 'Block #', lotNo: 'Lot #', phaseNo: 'Phase #',
-  address: 'Address', householdId: 'Household ID',
+  housingTenure: 'Housing Tenure', address: 'Address', householdId: 'Household ID',
   head: 'Household head', relationship: 'Relationship to household head',
   civil: 'Civil status', spouse: 'Spouse / partner', solo: 'Solo parent',
   children: 'Number of children', fourPs: '4Ps Beneficiary', tupad: 'TUPAD Beneficiary', imusVoter: 'Imus Voter',
@@ -137,7 +152,7 @@ function showInfoPopup(htmlMessage) {
   if (!$('infoDialog').open) $('infoDialog').showModal();
 }
 
-/* ---------- BLOCK / LOT / PHASE HOUSEHOLD MATCHING ---------- */
+/* ---------- BLOCK / LOT / PHASE & AUTO HOUSEHOLD ID ---------- */
 function findHouseholdByBlockLotPhase(blockNo, lotNo, phaseNo, excludeId = null) {
   const b = normStr(blockNo);
   const l = normStr(lotNo);
@@ -153,11 +168,34 @@ function findHouseholdByBlockLotPhase(blockNo, lotNo, phaseNo, excludeId = null)
   ) || null;
 }
 
-function checkBlockLotPhaseAutoFill() {
+function generateHouseholdId() {
+  const locCode = LOC_CODE_MAP[$('location').value] || '';
+  if (!locCode) return '';
+
+  const sublocCode = SUBLOC_CODE_MAP[$('subloc').value] || '';
+  const blp = [
+    $('blockNo').value.trim(),
+    $('lotNo').value.trim(),
+    $('phaseNo').value.trim()
+  ].join('');
+
+  const parts = [locCode];
+  if (sublocCode) parts.push(sublocCode);
+  if (blp) parts.push(blp);
+  parts.push('001');
+  return parts.join('-');
+}
+
+function updateAutoHouseholdId() {
   const currentId = $('rid').value ? Number($('rid').value) : null;
   const match = findHouseholdByBlockLotPhase($('blockNo').value, $('lotNo').value, $('phaseNo').value, currentId);
   if (match && match.householdId) {
     $('householdId').value = match.householdId;
+    return;
+  }
+  const generated = generateHouseholdId();
+  if (generated) {
+    $('householdId').value = generated;
   }
 }
 
@@ -426,6 +464,7 @@ function newResident() {
   $('tupad').value = '';
   $('lgbtqia').value = '';
   $('imusVoter').value = '';
+  $('housingTenure').value = '';
   $('rid').value = '';
   $('formTitle').textContent = 'Add resident';
   locLogic('');
@@ -446,7 +485,13 @@ function editResident(id) {
   });
   locLogic(r.subloc || '');
   // Auto-populate Household ID if another record matches Block #, Lot #, and Phase #
-  checkBlockLotPhaseAutoFill();
+  const match = findHouseholdByBlockLotPhase($('blockNo').value, $('lotNo').value, $('phaseNo').value, id);
+  if (match && match.householdId) {
+    $('householdId').value = match.householdId;
+  } else if (!$('householdId').value) {
+    const generated = generateHouseholdId();
+    if (generated) $('householdId').value = generated;
+  }
   checkDuplicateUI();
   saveDraft();
 }
@@ -511,7 +556,6 @@ function viewResident(id) {
   `;
   if (!$('viewDialog').open) $('viewDialog').showModal();
 
-  // Check Block #, Lot #, Phase # against existing records and inform user via pop-up
   const match = findHouseholdByBlockLotPhase(r.blockNo, r.lotNo, r.phaseNo, r.id);
   if (match && match.householdId) {
     showInfoPopup(`
@@ -524,18 +568,53 @@ function viewResident(id) {
   }
 }
 
-/* ---------- CHILDREN STEPPER ---------- */
+/* ---------- CHILDREN STEPPER & NUMERIC-ONLY 0-99 ---------- */
+function sanitizeChildrenInput() {
+  let digits = $('children').value.replace(/\D/g, '');
+  if (digits === '') {
+    $('children').value = '';
+    return;
+  }
+  let num = Math.min(99, parseInt(digits, 10));
+  $('children').value = String(num);
+}
+
+$('children').addEventListener('keydown', e => {
+  const allowed = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'];
+  if (allowed.includes(e.key) || e.ctrlKey || e.metaKey) return;
+  if (!/^\d$/.test(e.key)) e.preventDefault();
+});
+
+$('children').addEventListener('input', () => {
+  sanitizeChildrenInput();
+  saveDraft();
+});
+
+$('children').addEventListener('blur', () => {
+  if ($('children').value === '') $('children').value = '0';
+  sanitizeChildrenInput();
+  saveDraft();
+});
+
 $('childrenMinus').onclick = () => {
   let v = Math.max(0, (parseInt($('children').value, 10) || 0) - 1);
-  $('children').value = v;
+  $('children').value = String(v);
   saveDraft();
 };
 
 $('childrenPlus').onclick = () => {
-  let v = Math.max(0, (parseInt($('children').value, 10) || 0) + 1);
-  $('children').value = v;
+  let v = Math.min(99, Math.max(0, (parseInt($('children').value, 10) || 0) + 1));
+  $('children').value = String(v);
   saveDraft();
 };
+
+/* ---------- HOUSEHOLD HEAD -> RELATIONSHIP ---------- */
+$('head').addEventListener('change', () => {
+  if ($('head').value === 'Yes') {
+    $('relationship').value = 'Head';
+  }
+  saveDraft();
+});
 
 /* ---------- FORM EVENTS ---------- */
 $('residentForm').addEventListener('submit', async e => {
@@ -547,8 +626,8 @@ $('residentForm').addEventListener('submit', async e => {
   }
   let o = values();
   if (!SUBLOC_MAP[o.location]) o.subloc = '';
-  if (o.children === '') o.children = 0;
-  o.children = Math.max(0, Number(o.children) || 0);
+  let childNum = parseInt(String(o.children || '0').replace(/\D/g, ''), 10);
+  o.children = isNaN(childNum) ? 0 : Math.min(99, Math.max(0, childNum));
   o.updatedAt = new Date().toISOString();
   if ($('rid').value) {
     o.id = Number($('rid').value);
@@ -572,13 +651,19 @@ $('residentForm').addEventListener('change', () => {
   checkDuplicateUI();
   saveDraft();
 });
+
 $('location').addEventListener('change', () => {
   locLogic('');
+  updateAutoHouseholdId();
+  saveDraft();
+});
+$('subloc').addEventListener('change', () => {
+  updateAutoHouseholdId();
   saveDraft();
 });
 ['blockNo', 'lotNo', 'phaseNo'].forEach(id => {
   $(id).addEventListener('input', () => {
-    checkBlockLotPhaseAutoFill();
+    updateAutoHouseholdId();
     saveDraft();
   });
 });
@@ -653,7 +738,7 @@ async function importFile(e) {
     for (let r of records) {
       let o = { ...r };
       delete o.id;
-      if (o.children !== undefined) o.children = Number(o.children) || 0;
+      if (o.children !== undefined) o.children = Math.min(99, Math.max(0, Number(o.children) || 0));
       await request(s.add(o));
       count++;
     }
