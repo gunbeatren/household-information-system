@@ -1,9 +1,14 @@
-const DB_NAME = 'HISResidentsDB', STORE = 'residents', SETTINGS_STORE = 'settings', APP_VERSION = 'v1.3.0';
-let db, all = [], page = 0, pageSize = 100, isGuest = false;
+const DB_NAME = 'HISResidentsDB', STORE = 'residents', SETTINGS_STORE = 'settings', APP_VERSION = 'v1.4.0';
+let db, all = [], page = 0, pageSize = 100, isGuest = false, pendingDeleteId = null;
 let currentHeaderTitle = 'OFFLINE Household Information';
 let currentHeaderSub = 'Anabu II-C Resident Registry';
 
-const levels = ['Daycare 1', 'Daycare 2', 'Kinder', ...Array.from({ length: 9 }, (_, i) => `Grade ${i + 1}`), 'Highschool', 'College', 'Vocational'];
+const levels = [
+  'Daycare 1', 'Daycare 2', 'Kinder',
+  ...Array.from({ length: 12 }, (_, i) => `Grade ${i + 1}`),
+  'Highschool', 'College', 'Vocational'
+];
+
 const SUBLOC_MAP = {
   'Sitio Pulo': ['Bungad', 'Gitna', 'Palayan', 'Dulo'],
   '2-C Proper': ['Elysian Subdivision', '2-C Proper']
@@ -11,25 +16,27 @@ const SUBLOC_MAP = {
 
 const fields = [
   'last', 'first', 'middle', 'suffix', 'birth', 'gender', 'contact', 'email', 'religion', 'nationality',
-  'location', 'subloc', 'address', 'householdId', 'head', 'relationship',
-  'civil', 'spouse', 'solo', 'children', 'pwd', 'disability',
-  'fourPs', 'tupad', 'lgbtqia', 'imusVoter',
+  'lgbtqia', 'pwd', 'disability',
+  'location', 'subloc', 'blockNo', 'lotNo', 'phaseNo', 'address', 'householdId', 'head', 'relationship',
+  'civil', 'spouse', 'solo', 'children', 'fourPs', 'tupad', 'imusVoter',
   'enrolled', 'currentLevel', 'highest',
-  'employed', 'employmentType', 'work', 'workPlace'
+  'employed', 'employmentType', 'work', 'employerName', 'workPlace'
 ];
 
 const fieldLabels = {
   last: 'Last name', first: 'First name', middle: 'Middle name', suffix: 'Suffix',
   birth: 'Birthdate', gender: 'Gender', contact: 'Contact number', email: 'Email',
-  religion: 'Religion', nationality: 'Nationality', location: 'Location',
-  subloc: 'Area/Sub-location', address: 'Address', householdId: 'Household ID',
+  religion: 'Religion', nationality: 'Nationality',
+  lgbtqia: 'LGBTQIA++', pwd: 'PWD', disability: 'Disability',
+  location: 'Location', subloc: 'Area/Sub-location',
+  blockNo: 'Block #', lotNo: 'Lot #', phaseNo: 'Phase #',
+  address: 'Address', householdId: 'Household ID',
   head: 'Household head', relationship: 'Relationship to household head',
   civil: 'Civil status', spouse: 'Spouse / partner', solo: 'Solo parent',
-  children: 'Number of children', pwd: 'PWD', disability: 'Disability',
-  fourPs: '4Ps Beneficiary', tupad: 'TUPAD Beneficiary', lgbtqia: 'LGBTQIA++', imusVoter: 'Imus Voter',
+  children: 'Number of children', fourPs: '4Ps Beneficiary', tupad: 'TUPAD Beneficiary', imusVoter: 'Imus Voter',
   enrolled: 'Enrolled', currentLevel: 'Current level', highest: 'Highest educational attainment',
   employed: 'Employed', employmentType: 'Employment type',
-  work: 'Field of work / Type of business', workPlace: 'Place of work/business'
+  work: 'Field of work / Type of business', employerName: 'Employer name / Business name', workPlace: 'Place of work/business'
 };
 
 const $ = id => document.getElementById(id);
@@ -123,6 +130,35 @@ function toast(t) {
   el.textContent = t;
   el.style.display = 'block';
   setTimeout(() => el.style.display = 'none', 2500);
+}
+
+function showInfoPopup(htmlMessage) {
+  $('infoBody').innerHTML = htmlMessage;
+  if (!$('infoDialog').open) $('infoDialog').showModal();
+}
+
+/* ---------- BLOCK / LOT / PHASE HOUSEHOLD MATCHING ---------- */
+function findHouseholdByBlockLotPhase(blockNo, lotNo, phaseNo, excludeId = null) {
+  const b = normStr(blockNo);
+  const l = normStr(lotNo);
+  const p = normStr(phaseNo);
+  if (!b && !l && !p) return null;
+
+  return all.find(r =>
+    r.id !== excludeId &&
+    r.householdId &&
+    normStr(r.blockNo) === b &&
+    normStr(r.lotNo) === l &&
+    normStr(r.phaseNo) === p
+  ) || null;
+}
+
+function checkBlockLotPhaseAutoFill() {
+  const currentId = $('rid').value ? Number($('rid').value) : null;
+  const match = findHouseholdByBlockLotPhase($('blockNo').value, $('lotNo').value, $('phaseNo').value, currentId);
+  if (match && match.householdId) {
+    $('householdId').value = match.householdId;
+  }
 }
 
 /* ---------- SESSION / RELOAD PERSISTENCE ---------- */
@@ -409,26 +445,99 @@ function editResident(id) {
     if (f !== 'subloc') $(f).value = r[f] ?? '';
   });
   locLogic(r.subloc || '');
+  // Auto-populate Household ID if another record matches Block #, Lot #, and Phase #
+  checkBlockLotPhaseAutoFill();
   checkDuplicateUI();
   saveDraft();
 }
 
-async function deleteResident(id) {
+/* ---------- CUSTOM DELETE CONFIRMATION POP-UP ---------- */
+function deleteResident(id) {
   if (isGuest) return;
-  if (!confirm('Delete this resident record? This cannot be undone.')) return;
-  await request(db.transaction(STORE, 'readwrite').objectStore(STORE).delete(id));
-  await getAll();
-  toast('Resident deleted');
-}
-
-function viewResident(id) {
   let r = all.find(x => x.id === id);
   if (!r) return;
-  let rows = fields.map(f => `<div class="profileitem"><small>${esc(fieldLabels[f] || f)}</small><b>${esc(r[f] || '—')}</b></div>`).join('');
-  $('profile').innerHTML = `<div class="profilegrid">${rows}</div>${isGuest ? '' : `<div class="formactions"><button class="secondary" onclick="editResident(${id});$('viewDialog').close()">Edit</button></div>`}`;
-  $('viewDialog').showModal();
+  pendingDeleteId = id;
+  $('deleteBody').innerHTML = `
+    <p>Are you sure you want to delete this resident record? This cannot be undone.</p>
+    <div class="delete-details">
+      <div><strong>Record ID #:</strong> ${esc(r.id)}</div>
+      <div><strong>First name:</strong> ${esc(r.first || '—')}</div>
+      <div><strong>Middle name:</strong> ${esc(r.middle || '—')}</div>
+      <div><strong>Last name:</strong> ${esc(r.last || '—')}</div>
+      <div><strong>Birthdate:</strong> ${esc(r.birth || '—')}</div>
+    </div>
+  `;
+  $('deleteDialog').showModal();
 }
 
+$('confirmDelete').onclick = async () => {
+  if (isGuest || pendingDeleteId == null) return;
+  await request(db.transaction(STORE, 'readwrite').objectStore(STORE).delete(pendingDeleteId));
+  pendingDeleteId = null;
+  $('deleteDialog').close();
+  await getAll();
+  toast('Resident deleted');
+};
+
+$('cancelDelete').onclick = $('closeDelete').onclick = () => {
+  pendingDeleteId = null;
+  $('deleteDialog').close();
+};
+
+$('okInfo').onclick = $('closeInfo').onclick = () => $('infoDialog').close();
+
+/* ---------- VIEW RESIDENT PROFILE WITH NAVIGATION ---------- */
+function viewResident(id) {
+  let idx = all.findIndex(x => x.id === id);
+  if (idx === -1) return;
+  let r = all[idx];
+  let firstId = all[0]?.id;
+  let prevId = idx > 0 ? all[idx - 1].id : null;
+  let nextId = idx < all.length - 1 ? all[idx + 1].id : null;
+  let lastId = all[all.length - 1]?.id;
+
+  let rows = fields.map(f => `<div class="profileitem"><small>${esc(fieldLabels[f] || f)}</small><b>${esc(r[f] || '—')}</b></div>`).join('');
+  $('profile').innerHTML = `
+    <div class="profilegrid">${rows}</div>
+    <div class="profile-footer">
+      <div class="profile-nav">
+        <button type="button" class="secondary small" onclick="viewResident(${firstId})" ${idx <= 0 ? 'disabled' : ''}>First</button>
+        <button type="button" class="secondary small" onclick="viewResident(${prevId})" ${idx <= 0 ? 'disabled' : ''}>Previous</button>
+        <button type="button" class="secondary small" onclick="viewResident(${nextId})" ${idx >= all.length - 1 ? 'disabled' : ''}>Next</button>
+        <button type="button" class="secondary small" onclick="viewResident(${lastId})" ${idx >= all.length - 1 ? 'disabled' : ''}>Last</button>
+      </div>
+      ${isGuest ? '' : `<button type="button" class="primary small" onclick="editResident(${id});$('viewDialog').close()">Edit</button>`}
+    </div>
+  `;
+  if (!$('viewDialog').open) $('viewDialog').showModal();
+
+  // Check Block #, Lot #, Phase # against existing records and inform user via pop-up
+  const match = findHouseholdByBlockLotPhase(r.blockNo, r.lotNo, r.phaseNo, r.id);
+  if (match && match.householdId) {
+    showInfoPopup(`
+      <p>An existing record with the same <strong>Block #</strong>, <strong>Lot #</strong>, and <strong>Phase #</strong> was found in the database.</p>
+      <div class="delete-details">
+        <div><strong>Matched Record ID #:</strong> ${esc(match.id)}</div>
+        <div><strong>Household ID:</strong> ${esc(match.householdId)}</div>
+      </div>
+    `);
+  }
+}
+
+/* ---------- CHILDREN STEPPER ---------- */
+$('childrenMinus').onclick = () => {
+  let v = Math.max(0, (parseInt($('children').value, 10) || 0) - 1);
+  $('children').value = v;
+  saveDraft();
+};
+
+$('childrenPlus').onclick = () => {
+  let v = Math.max(0, (parseInt($('children').value, 10) || 0) + 1);
+  $('children').value = v;
+  saveDraft();
+};
+
+/* ---------- FORM EVENTS ---------- */
 $('residentForm').addEventListener('submit', async e => {
   e.preventDefault();
   if (isGuest && $('rid').value) return;
@@ -439,7 +548,7 @@ $('residentForm').addEventListener('submit', async e => {
   let o = values();
   if (!SUBLOC_MAP[o.location]) o.subloc = '';
   if (o.children === '') o.children = 0;
-  o.children = Number(o.children);
+  o.children = Math.max(0, Number(o.children) || 0);
   o.updatedAt = new Date().toISOString();
   if ($('rid').value) {
     o.id = Number($('rid').value);
@@ -466,6 +575,12 @@ $('residentForm').addEventListener('change', () => {
 $('location').addEventListener('change', () => {
   locLogic('');
   saveDraft();
+});
+['blockNo', 'lotNo', 'phaseNo'].forEach(id => {
+  $(id).addEventListener('input', () => {
+    checkBlockLotPhaseAutoFill();
+    saveDraft();
+  });
 });
 
 function closeRecordDialog() {
@@ -560,13 +675,20 @@ async function clearAll() {
 }
 
 /* ---------- AUTH & LOGIN LOGIC ---------- */
+function syncCancelForgotGap() {
+  const bothVisible = !$('loginCancelBtn').hidden && !$('forgotWrap').hidden;
+  $('cancelForgotGap').hidden = !bothVisible;
+}
+
 function resetAuthBoxes() {
   $('pinLoginBox').hidden = true;
   $('pinSetupBox').hidden = true;
   $('secOnlySetupBox').hidden = true;
   $('forgotPinBox').hidden = true;
+  $('forgotVerifyWrap').hidden = false;
   $('resetPinWrap').hidden = true;
   $('loginCancelBtn').hidden = true;
+  $('cancelForgotGap').hidden = true;
   $('pinInput').value = '';
   $('setupPin').value = '';
   $('setupQuestion').selectedIndex = 0;
@@ -584,6 +706,7 @@ async function showDefaultLoginScreen() {
   let userPinHash = await getSetting('userPinHash');
   $('loginActions').hidden = false;
   $('forgotWrap').hidden = !userPinHash;
+  syncCancelForgotGap();
 }
 
 async function setLock() {
@@ -614,6 +737,7 @@ async function proceedAfterAuth() {
     $('forgotWrap').hidden = true;
     $('secOnlySetupBox').hidden = false;
     $('loginCancelBtn').hidden = false;
+    syncCancelForgotGap();
     $('secOnlyQuestion').focus();
   } else {
     isGuest = false;
@@ -629,10 +753,13 @@ $('loginBtn').onclick = async () => {
   let userPinHash = await getSetting('userPinHash');
   if (userPinHash) {
     $('pinLoginBox').hidden = false;
+    $('forgotWrap').hidden = false;
+    syncCancelForgotGap();
     $('pinInput').focus();
   } else {
     $('forgotWrap').hidden = true;
     $('pinSetupBox').hidden = false;
+    syncCancelForgotGap();
     $('setupPin').focus();
   }
 };
@@ -717,8 +844,10 @@ $('forgotPinLabel').onclick = async () => {
   resetAuthBoxes();
   $('loginActions').hidden = true;
   $('forgotWrap').hidden = true;
+  syncCancelForgotGap();
   let q = (await getSetting('secQuestion')) || 'Security Question';
   $('savedQuestionText').textContent = q;
+  $('forgotVerifyWrap').hidden = false;
   $('forgotPinBox').hidden = false;
   $('forgotAnswer').focus();
 };
@@ -739,6 +868,7 @@ $('verifyAnswerBtn').onclick = async () => {
 
   if ((savedHash && inputHash === savedHash) || masterPhrases.includes(inputHash)) {
     $('forgotMsg').textContent = '';
+    $('forgotVerifyWrap').hidden = true;
     $('resetPinWrap').hidden = false;
     $('newPinInput').focus();
   } else {
@@ -778,7 +908,6 @@ async function restoreSessionIfActive() {
 
   openApp(savedPage);
 
-  // Restore unsaved resident form draft if it was open before reload
   try {
     let draft = JSON.parse(sessionStorage.getItem('his-session-draft') || 'null');
     if (draft && draft.open && draft.values) {
