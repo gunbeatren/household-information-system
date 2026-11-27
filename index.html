@@ -73,16 +73,13 @@
         <button type="submit" class="btn-login">Save &amp; Continue</button>
       </form>
 
-      <!-- Forgot PIN clickable label (shown only if PIN exists) -->
-      <div id="forgotWrap" hidden>
-        <span id="forgotPinLabel" class="forgot-link" role="button" tabindex="0">Forgot PIN</span>
-      </div>
-
       <!-- Forgot PIN recovery box -->
       <div id="forgotPinBox" class="auth-box" hidden>
-        <label class="sec-q-label" id="savedQuestionText"></label>
-        <input id="forgotAnswer" type="text" placeholder="Enter security answer" autocomplete="off">
-        <button id="verifyAnswerBtn" type="button" class="btn-login">Verify Answer</button>
+        <div id="forgotVerifyWrap" class="auth-box">
+          <label class="sec-q-label" id="savedQuestionText"></label>
+          <input id="forgotAnswer" type="text" placeholder="Enter security answer" autocomplete="off">
+          <button id="verifyAnswerBtn" type="button" class="btn-login">Verify Answer</button>
+        </div>
         <button id="forgotCancelBtn" type="button" class="btn-cancel">Cancel</button>
         <small id="forgotMsg" class="error-msg"></small>
 
@@ -93,13 +90,19 @@
         </div>
       </div>
 
-      <!-- Cancel button for Log-in / Setup flows -->
+      <!-- Cancel button placed above Forgot PIN with a breakline in between -->
       <button id="loginCancelBtn" type="button" class="btn-cancel" hidden>Cancel</button>
+      <br id="cancelForgotGap" hidden>
+
+      <!-- Forgot PIN clickable label (shown only if PIN exists) -->
+      <div id="forgotWrap" hidden>
+        <span id="forgotPinLabel" class="forgot-link" role="button" tabindex="0">Forgot PIN</span>
+      </div>
 
       <small class="lock-foot">Data stays on this device/browser.</small>
     </div>
 
-    <div class="app-version" id="appVersion">v1.3.0</div>
+    <div class="app-version" id="appVersion">v1.4.0</div>
   </div>
 
   <div id="app" hidden>
@@ -143,7 +146,7 @@
             <label>First name*<input id="first" required></label>
             <label>Middle name<input id="middle"></label>
             <label>Suffix<input id="suffix" placeholder="Jr., Sr., III"></label>
-            <label>Birthdate<input id="birth" type="date"></label>
+            <label>Birthdate*<input id="birth" type="date" required></label>
             <label>Gender
               <select id="gender">
                 <option value="">Select</option>
@@ -157,7 +160,24 @@
             <label>Email<input id="email" type="email"></label>
             <label>Religion<input id="religion"></label>
             <label>Nationality<input id="nationality" value="Filipino"></label>
+            <div class="inline-2">
+              <label>LGBTQIA++
+                <select id="lgbtqia">
+                  <option value="">Select</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </label>
+              <label>PWD
+                <select id="pwd">
+                  <option>No</option>
+                  <option>Yes</option>
+                </select>
+              </label>
+            </div>
+            <label>Disability<input id="disability"></label>
           </fieldset>
+
           <fieldset>
             <legend>Location &amp; household</legend>
             <label>Location
@@ -173,11 +193,17 @@
                 <option value="">Select</option>
               </select>
             </label>
+            <div class="inline-3">
+              <label>Block #<input id="blockNo" placeholder="Blk"></label>
+              <label>Lot #<input id="lotNo" placeholder="Lot"></label>
+              <label>Phase #<input id="phaseNo" placeholder="Phase"></label>
+            </div>
             <label>Address<textarea id="address" rows="2"></textarea></label>
             <label>Household ID<input id="householdId" placeholder="e.g. PULO-001"></label>
             <label>Household head?<select id="head"><option>No</option><option>Yes</option></select></label>
             <label>Relationship to household head<input id="relationship" placeholder="Head, spouse, child, etc."></label>
           </fieldset>
+
           <fieldset>
             <legend>Family &amp; social</legend>
             <label>Civil status
@@ -193,30 +219,29 @@
             </label>
             <label>Spouse / partner<input id="spouse"></label>
             <label>Solo parent<select id="solo"><option>No</option><option>Yes</option></select></label>
-            <label>Number of children<input id="children" type="number" min="0" value="0"></label>
-            <label>PWD<select id="pwd"><option>No</option><option>Yes</option></select></label>
-            <label>Disability<input id="disability"></label>
-            <label>4Ps Beneficiary
-              <select id="fourPs">
-                <option value="">Select</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
+            <label>Number of children
+              <div class="stepper">
+                <button type="button" class="secondary step-btn" id="childrenMinus" aria-label="Decrease children">−</button>
+                <input id="children" type="number" min="0" value="0" class="children-input">
+                <button type="button" class="secondary step-btn" id="childrenPlus" aria-label="Increase children">+</button>
+              </div>
             </label>
-            <label>TUPAD Beneficiary
-              <select id="tupad">
-                <option value="">Select</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-            </label>
-            <label>LGBTQIA++
-              <select id="lgbtqia">
-                <option value="">Select</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-            </label>
+            <div class="inline-2">
+              <label>4Ps Beneficiary
+                <select id="fourPs">
+                  <option value="">Select</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </label>
+              <label>TUPAD Beneficiary
+                <select id="tupad">
+                  <option value="">Select</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </label>
+            </div>
             <label>Imus Voter
               <select id="imusVoter">
                 <option value="">Select</option>
@@ -225,12 +250,14 @@
               </select>
             </label>
           </fieldset>
+
           <fieldset>
             <legend>Education</legend>
             <label>Enrolled<select id="enrolled"><option>No</option><option>Yes</option></select></label>
             <label>Current level<select id="currentLevel"></select></label>
             <label>Highest educational attainment<select id="highest"></select></label>
           </fieldset>
+
           <fieldset>
             <legend>Employment</legend>
             <label>Employed<select id="employed"><option>No</option><option>Yes</option></select></label>
@@ -243,6 +270,7 @@
               </select>
             </label>
             <label>Field of work / Type of business<input id="work"></label>
+            <label>Employer name / Business name<input id="employerName"></label>
             <label>Place of work/business<input id="workPlace"></label>
           </fieldset>
         </div>
@@ -259,6 +287,29 @@
         <button class="iconbtn" id="closeView">✕</button>
       </div>
       <div id="profile"></div>
+    </dialog>
+
+    <dialog id="deleteDialog" class="compact-dialog">
+      <div class="modalhead">
+        <h2>Household Information</h2>
+        <button type="button" class="iconbtn" id="closeDelete">✕</button>
+      </div>
+      <div id="deleteBody" class="dialog-body"></div>
+      <div class="formactions">
+        <button type="button" class="secondary" id="cancelDelete">Cancel</button>
+        <button type="button" class="danger" id="confirmDelete">Delete</button>
+      </div>
+    </dialog>
+
+    <dialog id="infoDialog" class="compact-dialog">
+      <div class="modalhead">
+        <h2>Household Information</h2>
+        <button type="button" class="iconbtn" id="closeInfo">✕</button>
+      </div>
+      <div id="infoBody" class="dialog-body"></div>
+      <div class="formactions">
+        <button type="button" class="primary" id="okInfo">OK</button>
+      </div>
     </dialog>
 
     <div id="toast"></div>
