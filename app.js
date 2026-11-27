@@ -169,34 +169,48 @@ function findHouseholdByBlockLotPhase(blockNo, lotNo, phaseNo, excludeId = null)
 }
 
 function generateHouseholdId() {
-  const locCode = LOC_CODE_MAP[$('location').value] || '';
-  if (!locCode) return '';
+  const loc = $('location').value;
+  const locCode = LOC_CODE_MAP[loc] || '';
+  const subloc = $('subloc').value;
+  const sublocRequired = Boolean(SUBLOC_MAP[loc]);
+  const sublocCode = SUBLOC_CODE_MAP[subloc] || '';
+  const blockNo = $('blockNo').value.trim();
+  const lotNo = $('lotNo').value.trim();
+  const phaseNo = $('phaseNo').value.trim();
 
-  const sublocCode = SUBLOC_CODE_MAP[$('subloc').value] || '';
-  const blp = [
-    $('blockNo').value.trim(),
-    $('lotNo').value.trim(),
-    $('phaseNo').value.trim()
-  ].join('');
+  // Clear Household ID if any required field is empty
+  // (Area/Sub-location is only required when enabled, i.e., not Pallas Athena)
+  if (!locCode || !blockNo || !lotNo || !phaseNo) return '';
+  if (sublocRequired && !sublocCode) return '';
 
+  const blp = `${blockNo}${lotNo}${phaseNo}`;
   const parts = [locCode];
   if (sublocCode) parts.push(sublocCode);
-  if (blp) parts.push(blp);
-  parts.push('001');
+  parts.push(blp, '001');
   return parts.join('-');
 }
 
 function updateAutoHouseholdId() {
+  const generated = generateHouseholdId();
+  if (!generated) {
+    $('householdId').value = '';
+    return;
+  }
+
   const currentId = $('rid').value ? Number($('rid').value) : null;
-  const match = findHouseholdByBlockLotPhase($('blockNo').value, $('lotNo').value, $('phaseNo').value, currentId);
+  const match = findHouseholdByBlockLotPhase(
+    $('blockNo').value,
+    $('lotNo').value,
+    $('phaseNo').value,
+    currentId
+  );
+
   if (match && match.householdId) {
     $('householdId').value = match.householdId;
     return;
   }
-  const generated = generateHouseholdId();
-  if (generated) {
-    $('householdId').value = generated;
-  }
+
+  $('householdId').value = generated;
 }
 
 /* ---------- SESSION / RELOAD PERSISTENCE ---------- */
