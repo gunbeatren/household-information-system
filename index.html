@@ -80,17 +80,18 @@
           <input id="forgotAnswer" type="text" placeholder="Enter security answer" autocomplete="off">
           <button id="verifyAnswerBtn" type="button" class="btn-login">Verify Answer</button>
         </div>
-        <button id="forgotCancelBtn" type="button" class="btn-cancel">Cancel</button>
-        <small id="forgotMsg" class="error-msg"></small>
 
         <div id="resetPinWrap" class="auth-box" hidden>
           <p class="setup-note"><strong>Note:</strong> Please remember your new PIN (minimum 2 digits).</p>
           <input id="newPinInput" class="pin-input" inputmode="numeric" type="password" minlength="2" maxlength="12" placeholder="Enter new PIN" autocomplete="off">
           <button id="saveNewPinBtn" type="button" class="btn-login">Save New PIN &amp; Log-in</button>
         </div>
+
+        <small id="forgotMsg" class="error-msg"></small>
+        <button id="forgotCancelBtn" type="button" class="btn-cancel">Cancel</button>
       </div>
 
-      <!-- Cancel button placed above Forgot PIN with a breakline in between -->
+      <!-- Cancel button placed above Forgot PIN with a breakline when both are visible; otherwise right above lock-foot -->
       <button id="loginCancelBtn" type="button" class="btn-cancel" hidden>Cancel</button>
       <br id="cancelForgotGap" hidden>
 
@@ -102,7 +103,7 @@
       <small class="lock-foot">Data stays on this device/browser.</small>
     </div>
 
-    <div class="app-version" id="appVersion">v1.4.0</div>
+    <div class="app-version" id="appVersion">v1.5.0</div>
   </div>
 
   <div id="app" hidden>
@@ -198,8 +199,16 @@
               <label>Lot #<input id="lotNo" placeholder="Lot"></label>
               <label>Phase #<input id="phaseNo" placeholder="Phase"></label>
             </div>
+            <label>Housing Tenure
+              <select id="housingTenure">
+                <option value="">Select</option>
+                <option value="House Owner">House Owner</option>
+                <option value="Renter">Renter</option>
+                <option value="Occupant">Occupant</option>
+              </select>
+            </label>
             <label>Address<textarea id="address" rows="2"></textarea></label>
-            <label>Household ID<input id="householdId" placeholder="e.g. PULO-001"></label>
+            <label>Household ID<input id="householdId" placeholder="e.g. PULO-G-621-001"></label>
             <label>Household head?<select id="head"><option>No</option><option>Yes</option></select></label>
             <label>Relationship to household head<input id="relationship" placeholder="Head, spouse, child, etc."></label>
           </fieldset>
@@ -222,7 +231,7 @@
             <label>Number of children
               <div class="stepper">
                 <button type="button" class="secondary step-btn" id="childrenMinus" aria-label="Decrease children">−</button>
-                <input id="children" type="number" min="0" value="0" class="children-input">
+                <input id="children" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" value="0" class="children-input">
                 <button type="button" class="secondary step-btn" id="childrenPlus" aria-label="Increase children">+</button>
               </div>
             </label>
