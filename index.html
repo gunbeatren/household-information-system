@@ -15,20 +15,21 @@
       <h1>OFFLINE Household Information</h1>
       <p class="registry-sub">Anabu II-C Resident Registry</p>
 
-      <div class="login-actions">
+      <div id="loginActions" class="login-actions">
         <button id="loginBtn" type="button" class="btn-login">Log-in</button>
         <button id="guestBtn" type="button" class="btn-guest">Guest Log-in</button>
       </div>
 
       <!-- Existing PIN / Master PIN entry (auto-validates silently) -->
       <div id="pinLoginBox" class="auth-box" hidden>
-        <input id="pinInput" inputmode="numeric" type="password" maxlength="12" placeholder="Enter PIN" autocomplete="off">
+        <input id="pinInput" class="pin-input" inputmode="numeric" type="password" maxlength="12" placeholder="Enter PIN" autocomplete="off">
       </div>
 
       <!-- First-time PIN + Security Question setup -->
       <form id="pinSetupBox" class="auth-box" hidden>
-        <label>Set a PIN
-          <input id="setupPin" inputmode="numeric" type="password" maxlength="12" placeholder="Enter new PIN" required>
+        <p class="setup-note"><strong>Note:</strong> Please remember your created PIN and Security Question &amp; Answer. Your Security Question and Answer will be needed in case you forget your PIN.</p>
+        <label>Set a PIN (minimum 2 digits)
+          <input id="setupPin" class="pin-input" inputmode="numeric" type="password" minlength="2" maxlength="12" placeholder="Enter new PIN" autocomplete="off" required>
         </label>
         <label>Security Question
           <select id="setupQuestion" required>
@@ -44,14 +45,15 @@
           </select>
         </label>
         <label>Answer
-          <input id="setupAnswer" type="text" placeholder="Enter your answer" required>
+          <input id="setupAnswer" type="text" placeholder="Enter your answer" autocomplete="off" required>
         </label>
+        <small id="setupPinMsg" class="error-msg"></small>
         <button type="submit" class="btn-login">Save &amp; Log-in</button>
       </form>
 
       <!-- Security Question only setup (if PIN exists or Master PIN used, but no Security Question yet) -->
       <form id="secOnlySetupBox" class="auth-box" hidden>
-        <p class="sec-q-label">Please set a Security Question before continuing</p>
+        <p class="setup-note"><strong>Note:</strong> Please remember your Security Question and Answer. It will be needed in case you forget your PIN.</p>
         <label>Security Question
           <select id="secOnlyQuestion" required>
             <option value="">Select a security question</option>
@@ -66,7 +68,7 @@
           </select>
         </label>
         <label>Answer
-          <input id="secOnlyAnswer" type="text" placeholder="Enter your answer" required>
+          <input id="secOnlyAnswer" type="text" placeholder="Enter your answer" autocomplete="off" required>
         </label>
         <button type="submit" class="btn-login">Save &amp; Continue</button>
       </form>
@@ -81,18 +83,23 @@
         <label class="sec-q-label" id="savedQuestionText"></label>
         <input id="forgotAnswer" type="text" placeholder="Enter security answer" autocomplete="off">
         <button id="verifyAnswerBtn" type="button" class="btn-login">Verify Answer</button>
+        <button id="forgotCancelBtn" type="button" class="btn-cancel">Cancel</button>
         <small id="forgotMsg" class="error-msg"></small>
 
-        <div id="resetPinWrap" hidden>
-          <input id="newPinInput" inputmode="numeric" type="password" maxlength="12" placeholder="Enter new PIN" autocomplete="off">
+        <div id="resetPinWrap" class="auth-box" hidden>
+          <p class="setup-note"><strong>Note:</strong> Please remember your new PIN (minimum 2 digits).</p>
+          <input id="newPinInput" class="pin-input" inputmode="numeric" type="password" minlength="2" maxlength="12" placeholder="Enter new PIN" autocomplete="off">
           <button id="saveNewPinBtn" type="button" class="btn-login">Save New PIN &amp; Log-in</button>
         </div>
       </div>
 
+      <!-- Cancel button for Log-in / Setup flows -->
+      <button id="loginCancelBtn" type="button" class="btn-cancel" hidden>Cancel</button>
+
       <small class="lock-foot">Data stays on this device/browser.</small>
     </div>
 
-    <div class="app-version" id="appVersion">v1.2.0</div>
+    <div class="app-version" id="appVersion">v1.3.0</div>
   </div>
 
   <div id="app" hidden>
@@ -100,8 +107,8 @@
       <div class="brand">
         <img src="icon-192.png" alt="Logo" class="header-icon">
         <div>
-          <b>OFFLINE Household Information</b>
-          <small>Anabu II-C Resident Registry</small>
+          <b id="headerTitle">OFFLINE Household Information</b>
+          <small id="headerSub">Anabu II-C Resident Registry</small>
         </div>
       </div>
       <button class="iconbtn" id="lockBtn" title="Lock">🔒</button>
@@ -128,6 +135,7 @@
           <button type="button" class="iconbtn" id="closeForm">✕</button>
         </div>
         <input type="hidden" id="rid">
+        <div id="dupWarning" class="dup-warning" hidden></div>
         <div class="formgrid">
           <fieldset>
             <legend>Personal information</legend>
@@ -154,22 +162,18 @@
             <legend>Location &amp; household</legend>
             <label>Location
               <select id="location">
-                <option></option>
-                <option>Pulo</option>
-                <option>Proper</option>
-                <option>Athena</option>
+                <option value="">Select</option>
+                <option value="Sitio Pulo">Sitio Pulo</option>
+                <option value="2-C Proper">2-C Proper</option>
+                <option value="Pallas Athena">Pallas Athena</option>
               </select>
             </label>
-            <label id="sublocWrap" hidden>Sub-location
-              <select id="subloc">
-                <option></option>
-                <option>Bungad</option>
-                <option>Gitna</option>
-                <option>Dulo</option>
+            <label id="sublocWrap">Area/Sub-location
+              <select id="subloc" disabled>
+                <option value="">Select</option>
               </select>
             </label>
             <label>Address<textarea id="address" rows="2"></textarea></label>
-            <label>City registered voter<input id="voterCity"></label>
             <label>Household ID<input id="householdId" placeholder="e.g. PULO-001"></label>
             <label>Household head?<select id="head"><option>No</option><option>Yes</option></select></label>
             <label>Relationship to household head<input id="relationship" placeholder="Head, spouse, child, etc."></label>
@@ -178,13 +182,13 @@
             <legend>Family &amp; social</legend>
             <label>Civil status
               <select id="civil">
-                <option></option>
-                <option>Single</option>
-                <option>Married</option>
-                <option>Widowed</option>
-                <option>Annulled</option>
-                <option>Divorced</option>
-                <option>Lived-in</option>
+                <option value="">Select</option>
+                <option value="Single">Single</option>
+                <option value="Married">Married</option>
+                <option value="Cohabitation">Cohabitation</option>
+                <option value="Widowed">Widowed</option>
+                <option value="Legally Separated">Legally Separated</option>
+                <option value="Annulled">Annulled</option>
               </select>
             </label>
             <label>Spouse / partner<input id="spouse"></label>
@@ -192,6 +196,34 @@
             <label>Number of children<input id="children" type="number" min="0" value="0"></label>
             <label>PWD<select id="pwd"><option>No</option><option>Yes</option></select></label>
             <label>Disability<input id="disability"></label>
+            <label>4Ps Beneficiary
+              <select id="fourPs">
+                <option value="">Select</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </label>
+            <label>TUPAD Beneficiary
+              <select id="tupad">
+                <option value="">Select</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </label>
+            <label>LGBTQIA++
+              <select id="lgbtqia">
+                <option value="">Select</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </label>
+            <label>Imus Voter
+              <select id="imusVoter">
+                <option value="">Select</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </label>
           </fieldset>
           <fieldset>
             <legend>Education</legend>
@@ -204,18 +236,19 @@
             <label>Employed<select id="employed"><option>No</option><option>Yes</option></select></label>
             <label>Employment type
               <select id="employmentType">
-                <option></option>
+                <option value="">Select</option>
                 <option>Employee</option>
                 <option>Business Owner</option>
                 <option>Self-Employed</option>
               </select>
             </label>
-            <label>Place of work / type of business<input id="work"></label>
+            <label>Field of work / Type of business<input id="work"></label>
+            <label>Place of work/business<input id="workPlace"></label>
           </fieldset>
         </div>
         <div class="formactions">
           <button type="button" class="secondary" id="cancelForm">Cancel</button>
-          <button class="primary" type="submit">Save resident</button>
+          <button class="primary" id="saveResidentBtn" type="submit">Save resident</button>
         </div>
       </form>
     </dialog>
