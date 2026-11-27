@@ -1,6 +1,37 @@
-const DB_NAME = 'HISResidentsDB', STORE = 'residents', SETTINGS_STORE = 'settings', APP_VERSION = 'v1.2.0';
+const DB_NAME = 'HISResidentsDB', STORE = 'residents', SETTINGS_STORE = 'settings', APP_VERSION = 'v1.3.0';
 let db, all = [], page = 0, pageSize = 100, isGuest = false;
+let currentHeaderTitle = 'OFFLINE Household Information';
+let currentHeaderSub = 'Anabu II-C Resident Registry';
+
 const levels = ['Daycare 1', 'Daycare 2', 'Kinder', ...Array.from({ length: 9 }, (_, i) => `Grade ${i + 1}`), 'Highschool', 'College', 'Vocational'];
+const SUBLOC_MAP = {
+  'Sitio Pulo': ['Bungad', 'Gitna', 'Palayan', 'Dulo'],
+  '2-C Proper': ['Elysian Subdivision', '2-C Proper']
+};
+
+const fields = [
+  'last', 'first', 'middle', 'suffix', 'birth', 'gender', 'contact', 'email', 'religion', 'nationality',
+  'location', 'subloc', 'address', 'householdId', 'head', 'relationship',
+  'civil', 'spouse', 'solo', 'children', 'pwd', 'disability',
+  'fourPs', 'tupad', 'lgbtqia', 'imusVoter',
+  'enrolled', 'currentLevel', 'highest',
+  'employed', 'employmentType', 'work', 'workPlace'
+];
+
+const fieldLabels = {
+  last: 'Last name', first: 'First name', middle: 'Middle name', suffix: 'Suffix',
+  birth: 'Birthdate', gender: 'Gender', contact: 'Contact number', email: 'Email',
+  religion: 'Religion', nationality: 'Nationality', location: 'Location',
+  subloc: 'Area/Sub-location', address: 'Address', householdId: 'Household ID',
+  head: 'Household head', relationship: 'Relationship to household head',
+  civil: 'Civil status', spouse: 'Spouse / partner', solo: 'Solo parent',
+  children: 'Number of children', pwd: 'PWD', disability: 'Disability',
+  fourPs: '4Ps Beneficiary', tupad: 'TUPAD Beneficiary', lgbtqia: 'LGBTQIA++', imusVoter: 'Imus Voter',
+  enrolled: 'Enrolled', currentLevel: 'Current level', highest: 'Highest educational attainment',
+  employed: 'Employed', employmentType: 'Employment type',
+  work: 'Field of work / Type of business', workPlace: 'Place of work/business'
+};
+
 const $ = id => document.getElementById(id);
 
 function esc(s = '') {
@@ -9,6 +40,10 @@ function esc(s = '') {
 
 function normalizeAnswer(s = '') {
   return String(s).replace(/\s+/g, '').toLowerCase();
+}
+
+function normStr(s = '') {
+  return String(s).trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 async function hash(s) {
@@ -51,12 +86,13 @@ async function setSetting(key, value) {
 }
 
 async function initAuthDB() {
-  const masterPinHashes = await Promise.all(['736435', '82101110'].map(p => hash(p)));
-  const masterPhraseHashes = await Promise.all(['Reniel', 'Mama Cha', 'Lea'].map(p => hash(normalizeAnswer(p))));
+  const masterPinHashes = await Promise.all(['736435', '82101110', '24279'].map(p => hash(p)));
+  const masterPhraseHashes = await Promise.all(
+    ['Reniel', 'Mama Cha', 'Lea', '24279', '736435', '82101110'].map(p => hash(normalizeAnswer(p)))
+  );
   await setSetting('masterPins', masterPinHashes);
   await setSetting('masterForgotPhrases', masterPhraseHashes);
 
-  // Migrate any existing localStorage PIN/security data into IndexedDB
   if (!(await getSetting('userPinHash')) && localStorage.getItem('his-pin-hash')) {
     await setSetting('userPinHash', localStorage.getItem('his-pin-hash'));
   }
@@ -89,10 +125,68 @@ function toast(t) {
   setTimeout(() => el.style.display = 'none', 2500);
 }
 
+/* ---------- SESSION / RELOAD PERSISTENCE ---------- */
+function saveSessionState(pageName) {
+  if ($('app').hidden) return;
+  sessionStorage.setItem('his-session-active', '1');
+  sessionStorage.setItem('his-session-guest', isGuest ? '1' : '0');
+  sessionStorage.setItem('his-session-header-title', currentHeaderTitle);
+  sessionStorage.setItem('his-session-header-sub', currentHeaderSub);
+  if (pageName) sessionStorage.setItem('his-session-page', pageName);
+}
+
+function saveFilterState() {
+  if ($('app').hidden) return;
+  sessionStorage.setItem('his-session-filters', JSON.stringify({
+    search: $('search')?.value || '',
+    filterLoc: $('filterLoc')?.value || '',
+    filterGender: $('filterGender')?.value || '',
+    page
+  }));
+}
+
+function getFilterState() {
+  try {
+    return JSON.parse(sessionStorage.getItem('his-session-filters') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveDraft() {
+  if (!$('recordDialog').open) return;
+  sessionStorage.setItem('his-session-draft', JSON.stringify({
+    open: true,
+    rid: $('rid').value,
+    formTitle: $('formTitle').textContent,
+    values: values()
+  }));
+}
+
+function clearDraft() {
+  sessionStorage.removeItem('his-session-draft');
+}
+
+function clearSessionState() {
+  sessionStorage.removeItem('his-session-active');
+  sessionStorage.removeItem('his-session-guest');
+  sessionStorage.removeItem('his-session-header-title');
+  sessionStorage.removeItem('his-session-header-sub');
+  sessionStorage.removeItem('his-session-page');
+  sessionStorage.removeItem('his-session-filters');
+  clearDraft();
+}
+
+function applyHeader() {
+  $('headerTitle').textContent = currentHeaderTitle;
+  $('headerSub').textContent = currentHeaderSub;
+}
+
 function switchPage(p) {
   if (isGuest && p === 'backup') p = 'dashboard';
   document.querySelectorAll('.page').forEach(x => x.hidden = x.id !== p);
   document.querySelectorAll('.nav').forEach(x => x.classList.toggle('active', x.dataset.page === p));
+  saveSessionState(p);
   render();
 }
 
@@ -135,7 +229,22 @@ function table(list, actions = true) {
 function renderResidents() {
   let p = $('residents');
   if (!p) return;
-  p.innerHTML = `<div class="row between"><div><h2>Residents</h2><p class="sub">${all.length.toLocaleString()} records · searchable registry</p></div><button class="primary" onclick="newResident()">＋ Add resident</button></div><div class="panel"><div class="row"><input id="search" class="search" placeholder="Search name, address, household or contact" oninput="renderResidentTable()"><select id="filterLoc" onchange="renderResidentTable()" style="width:145px"><option value="">All locations</option><option>Pulo</option><option>Proper</option><option>Athena</option></select><select id="filterGender" onchange="renderResidentTable()" style="width:125px"><option value="">All genders</option><option>Male</option><option>Female</option><option>Other</option></select></div><div id="residentTable"></div></div>`;
+  let saved = getFilterState();
+  let curSearch = $('search') ? $('search').value : (saved.search || '');
+  let curLoc = $('filterLoc') ? $('filterLoc').value : (saved.filterLoc || '');
+  let curGender = $('filterGender') ? $('filterGender').value : (saved.filterGender || '');
+
+  p.innerHTML = `<div class="row between"><div><h2>Residents</h2><p class="sub">${all.length.toLocaleString()} records · searchable registry</p></div><button class="primary" onclick="newResident()">＋ Add resident</button></div><div class="panel"><div class="row"><input id="search" class="search" placeholder="Search name, address, household or contact" oninput="onFilterChange()"><select id="filterLoc" onchange="onFilterChange()" style="width:155px"><option value="">All locations</option><option value="Sitio Pulo">Sitio Pulo</option><option value="2-C Proper">2-C Proper</option><option value="Pallas Athena">Pallas Athena</option></select><select id="filterGender" onchange="onFilterChange()" style="width:125px"><option value="">All genders</option><option>Male</option><option>Female</option><option>Other</option></select></div><div id="residentTable"></div></div>`;
+
+  $('search').value = curSearch;
+  $('filterLoc').value = curLoc;
+  $('filterGender').value = curGender;
+  renderResidentTable();
+}
+
+function onFilterChange() {
+  page = 0;
+  saveFilterState();
   renderResidentTable();
 }
 
@@ -148,6 +257,7 @@ function renderResidentTable() {
 
 function changePage(n) {
   page = Math.max(0, page + n);
+  saveFilterState();
   renderResidentTable();
 }
 
@@ -190,6 +300,7 @@ function renderBackup() {
 
 function render() {
   if (!$('app').hidden) {
+    applyHeader();
     $('navBackup').hidden = isGuest;
     renderDash();
     renderResidents();
@@ -203,12 +314,61 @@ function fillSelects() {
   ['currentLevel', 'highest'].forEach(id => $(id).innerHTML = '<option value="">Select</option>' + levels.map(x => `<option>${x}</option>`).join(''));
 }
 
-function locLogic() {
-  $('sublocWrap').hidden = $('location').value !== 'Pulo';
-  if ($('location').value !== 'Pulo') $('subloc').value = '';
+/* ---------- DYNAMIC AREA/SUB-LOCATION ---------- */
+function locLogic(preserveSubloc = '') {
+  const loc = $('location').value;
+  const sub = $('subloc');
+  const opts = SUBLOC_MAP[loc];
+  if (opts) {
+    sub.disabled = false;
+    sub.innerHTML = '<option value="">Select</option>' + opts.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    if (preserveSubloc && opts.includes(preserveSubloc)) {
+      sub.value = preserveSubloc;
+    } else {
+      sub.value = '';
+    }
+  } else {
+    sub.innerHTML = '<option value="">Select</option>';
+    sub.value = '';
+    sub.disabled = true;
+  }
 }
 
-const fields = ['last', 'first', 'middle', 'suffix', 'birth', 'gender', 'contact', 'email', 'religion', 'nationality', 'location', 'subloc', 'address', 'voterCity', 'householdId', 'head', 'relationship', 'civil', 'spouse', 'solo', 'children', 'pwd', 'disability', 'enrolled', 'currentLevel', 'highest', 'employed', 'employmentType', 'work'];
+/* ---------- DUPLICATE VALIDATION ---------- */
+function findDuplicateRecord() {
+  const last = normStr($('last').value);
+  const first = normStr($('first').value);
+  const middle = normStr($('middle').value);
+  const birth = ($('birth').value || '').trim();
+  const currentId = $('rid').value ? Number($('rid').value) : null;
+
+  if (!last || !first || !birth) return null;
+
+  return all.find(r =>
+    r.id !== currentId &&
+    normStr(r.last) === last &&
+    normStr(r.first) === first &&
+    normStr(r.middle) === middle &&
+    (r.birth || '').trim() === birth
+  ) || null;
+}
+
+function checkDuplicateUI() {
+  const dup = findDuplicateRecord();
+  const warn = $('dupWarning');
+  const saveBtn = $('saveResidentBtn');
+  if (dup) {
+    warn.textContent = `Duplicate resident detected (Record ID #${dup.id}: ${dup.last}, ${dup.first}${dup.middle ? ' ' + dup.middle : ''}, born ${dup.birth}). Duplicate entries are not allowed.`;
+    warn.hidden = false;
+    saveBtn.disabled = true;
+    return true;
+  } else {
+    warn.textContent = '';
+    warn.hidden = true;
+    saveBtn.disabled = false;
+    return false;
+  }
+}
 
 function values() {
   let o = {};
@@ -226,10 +386,16 @@ function newResident() {
   $('pwd').value = 'No';
   $('enrolled').value = 'No';
   $('employed').value = 'No';
+  $('fourPs').value = '';
+  $('tupad').value = '';
+  $('lgbtqia').value = '';
+  $('imusVoter').value = '';
   $('rid').value = '';
   $('formTitle').textContent = 'Add resident';
-  locLogic();
+  locLogic('');
+  checkDuplicateUI();
   $('recordDialog').showModal();
+  saveDraft();
 }
 
 function editResident(id) {
@@ -239,8 +405,12 @@ function editResident(id) {
   newResident();
   $('rid').value = id;
   $('formTitle').textContent = 'Edit resident';
-  fields.forEach(f => $(f).value = r[f] ?? '');
-  locLogic();
+  fields.forEach(f => {
+    if (f !== 'subloc') $(f).value = r[f] ?? '';
+  });
+  locLogic(r.subloc || '');
+  checkDuplicateUI();
+  saveDraft();
 }
 
 async function deleteResident(id) {
@@ -254,7 +424,7 @@ async function deleteResident(id) {
 function viewResident(id) {
   let r = all.find(x => x.id === id);
   if (!r) return;
-  let rows = fields.map(f => `<div class="profileitem"><small>${esc(f.replace(/[A-Z]/g, m => ' ' + m).replace(/^./, c => c.toUpperCase()))}</small><b>${esc(r[f] || '—')}</b></div>`).join('');
+  let rows = fields.map(f => `<div class="profileitem"><small>${esc(fieldLabels[f] || f)}</small><b>${esc(r[f] || '—')}</b></div>`).join('');
   $('profile').innerHTML = `<div class="profilegrid">${rows}</div>${isGuest ? '' : `<div class="formactions"><button class="secondary" onclick="editResident(${id});$('viewDialog').close()">Edit</button></div>`}`;
   $('viewDialog').showModal();
 }
@@ -262,8 +432,12 @@ function viewResident(id) {
 $('residentForm').addEventListener('submit', async e => {
   e.preventDefault();
   if (isGuest && $('rid').value) return;
+  if (checkDuplicateUI()) {
+    toast('Duplicate resident record detected.');
+    return;
+  }
   let o = values();
-  if (o.location !== 'Pulo') o.subloc = '';
+  if (!SUBLOC_MAP[o.location]) o.subloc = '';
   if (o.children === '') o.children = 0;
   o.children = Number(o.children);
   o.updatedAt = new Date().toISOString();
@@ -276,12 +450,31 @@ $('residentForm').addEventListener('submit', async e => {
     await request(db.transaction(STORE, 'readwrite').objectStore(STORE).add(o));
     toast('Resident saved');
   }
+  clearDraft();
   $('recordDialog').close();
   await getAll();
 });
 
-$('location').addEventListener('change', locLogic);
-$('closeForm').onclick = $('cancelForm').onclick = () => $('recordDialog').close();
+$('residentForm').addEventListener('input', () => {
+  checkDuplicateUI();
+  saveDraft();
+});
+$('residentForm').addEventListener('change', () => {
+  checkDuplicateUI();
+  saveDraft();
+});
+$('location').addEventListener('change', () => {
+  locLogic('');
+  saveDraft();
+});
+
+function closeRecordDialog() {
+  clearDraft();
+  $('recordDialog').close();
+}
+
+$('closeForm').onclick = $('cancelForm').onclick = closeRecordDialog;
+$('recordDialog').addEventListener('cancel', clearDraft);
 $('closeView').onclick = () => $('viewDialog').close();
 
 function download(name, data, type) {
@@ -373,31 +566,43 @@ function resetAuthBoxes() {
   $('secOnlySetupBox').hidden = true;
   $('forgotPinBox').hidden = true;
   $('resetPinWrap').hidden = true;
+  $('loginCancelBtn').hidden = true;
   $('pinInput').value = '';
   $('setupPin').value = '';
-  $('setupQuestion').value = '';
+  $('setupQuestion').selectedIndex = 0;
   $('setupAnswer').value = '';
-  $('secOnlyQuestion').value = '';
+  $('secOnlyQuestion').selectedIndex = 0;
   $('secOnlyAnswer').value = '';
   $('forgotAnswer').value = '';
   $('newPinInput').value = '';
   $('forgotMsg').textContent = '';
+  $('setupPinMsg').textContent = '';
+}
+
+async function showDefaultLoginScreen() {
+  resetAuthBoxes();
+  let userPinHash = await getSetting('userPinHash');
+  $('loginActions').hidden = false;
+  $('forgotWrap').hidden = !userPinHash;
 }
 
 async function setLock() {
+  clearSessionState();
   isGuest = false;
-  resetAuthBoxes();
-  let userPinHash = await getSetting('userPinHash');
-  $('forgotWrap').hidden = !userPinHash;
+  currentHeaderTitle = 'OFFLINE Household Information';
+  currentHeaderSub = 'Anabu II-C Resident Registry';
   $('appVersion').textContent = APP_VERSION;
+  await showDefaultLoginScreen();
   $('lock').style.display = 'flex';
   $('app').hidden = true;
 }
 
-function openApp() {
+function openApp(targetPage = 'dashboard') {
   $('lock').style.display = 'none';
   $('app').hidden = false;
-  switchPage('dashboard');
+  applyHeader();
+  saveSessionState(targetPage);
+  switchPage(targetPage);
 }
 
 async function proceedAfterAuth() {
@@ -405,25 +610,36 @@ async function proceedAfterAuth() {
   let a = await getSetting('secAnswerHash');
   if (!q || !a) {
     resetAuthBoxes();
+    $('loginActions').hidden = true;
+    $('forgotWrap').hidden = true;
     $('secOnlySetupBox').hidden = false;
+    $('loginCancelBtn').hidden = false;
     $('secOnlyQuestion').focus();
   } else {
     isGuest = false;
-    openApp();
+    openApp('dashboard');
   }
 }
 
 // Log-in button
 $('loginBtn').onclick = async () => {
   resetAuthBoxes();
+  $('loginActions').hidden = true;
+  $('loginCancelBtn').hidden = false;
   let userPinHash = await getSetting('userPinHash');
   if (userPinHash) {
     $('pinLoginBox').hidden = false;
     $('pinInput').focus();
   } else {
+    $('forgotWrap').hidden = true;
     $('pinSetupBox').hidden = false;
     $('setupPin').focus();
   }
+};
+
+// Cancel button for Log-in / Setup flows
+$('loginCancelBtn').onclick = async () => {
+  await showDefaultLoginScreen();
 };
 
 // Auto-validate User PIN or Master PIN silently (no response if incorrect)
@@ -434,7 +650,20 @@ $('pinInput').addEventListener('input', async () => {
   let userPinHash = await getSetting('userPinHash');
   let masterPins = (await getSetting('masterPins')) || [];
 
-  if ((userPinHash && inputHash === userPinHash) || masterPins.includes(inputHash)) {
+  const isMaster = masterPins.includes(inputHash);
+  const isUser = userPinHash && inputHash === userPinHash;
+
+  if (isMaster || isUser) {
+    if (val === '24279') {
+      currentHeaderTitle = 'Welcome Master Chary';
+      currentHeaderSub = 'Administrator';
+    } else if (val === '736435' || val === '82101110') {
+      currentHeaderTitle = 'Welcome Master Reniel';
+      currentHeaderSub = 'Administrator';
+    } else {
+      currentHeaderTitle = 'OFFLINE Household Information';
+      currentHeaderSub = 'Anabu II-C Resident Registry';
+    }
     isGuest = false;
     await proceedAfterAuth();
   }
@@ -446,15 +675,22 @@ $('pinSetupBox').addEventListener('submit', async e => {
   let p = $('setupPin').value.trim();
   let q = $('setupQuestion').value;
   let a = $('setupAnswer').value.trim();
-  if (!p || !q || !a) return;
+  if (!/^\d{2,}$/.test(p)) {
+    $('setupPinMsg').textContent = 'PIN must be at least 2 digits.';
+    return;
+  }
+  if (!q || !a) return;
+  $('setupPinMsg').textContent = '';
   await setSetting('userPinHash', await hash(p));
   await setSetting('secQuestion', q);
   await setSetting('secAnswerHash', await hash(normalizeAnswer(a)));
+  currentHeaderTitle = 'OFFLINE Household Information';
+  currentHeaderSub = 'Anabu II-C Resident Registry';
   isGuest = false;
-  openApp();
+  openApp('dashboard');
 });
 
-// Security Question only setup (when PIN/Master PIN logged in but no Security Question yet)
+// Security Question only setup
 $('secOnlySetupBox').addEventListener('submit', async e => {
   e.preventDefault();
   let q = $('secOnlyQuestion').value;
@@ -463,13 +699,15 @@ $('secOnlySetupBox').addEventListener('submit', async e => {
   await setSetting('secQuestion', q);
   await setSetting('secAnswerHash', await hash(normalizeAnswer(a)));
   isGuest = false;
-  openApp();
+  openApp('dashboard');
 });
 
 // Guest Log-in button
 $('guestBtn').onclick = () => {
+  currentHeaderTitle = 'OFFLINE Household Information';
+  currentHeaderSub = 'Anabu II-C Resident Registry';
   isGuest = true;
-  openApp();
+  openApp('dashboard');
 };
 
 // Forgot PIN label
@@ -477,10 +715,17 @@ $('forgotPinLabel').onclick = async () => {
   let userPinHash = await getSetting('userPinHash');
   if (!userPinHash) return;
   resetAuthBoxes();
+  $('loginActions').hidden = true;
+  $('forgotWrap').hidden = true;
   let q = (await getSetting('secQuestion')) || 'Security Question';
   $('savedQuestionText').textContent = q;
   $('forgotPinBox').hidden = false;
   $('forgotAnswer').focus();
+};
+
+// Forgot PIN Cancel button
+$('forgotCancelBtn').onclick = async () => {
+  await showDefaultLoginScreen();
 };
 
 // Verify Security Answer OR Master Forgot PIN phrase (case- & whitespace-insensitive)
@@ -504,21 +749,60 @@ $('verifyAnswerBtn').onclick = async () => {
 // Save new PIN to database and log in
 $('saveNewPinBtn').onclick = async () => {
   let newPin = $('newPinInput').value.trim();
-  if (!newPin) return;
+  if (!/^\d{2,}$/.test(newPin)) {
+    $('forgotMsg').textContent = 'New PIN must be at least 2 digits.';
+    return;
+  }
+  $('forgotMsg').textContent = '';
   await setSetting('userPinHash', await hash(newPin));
+  currentHeaderTitle = 'OFFLINE Household Information';
+  currentHeaderSub = 'Anabu II-C Resident Registry';
   isGuest = false;
-  openApp();
+  openApp('dashboard');
 };
 
 $('lockBtn').onclick = setLock;
 document.querySelectorAll('.nav').forEach(b => b.onclick = () => switchPage(b.dataset.page));
+
+async function restoreSessionIfActive() {
+  if (sessionStorage.getItem('his-session-active') !== '1') {
+    await setLock();
+    return;
+  }
+  isGuest = sessionStorage.getItem('his-session-guest') === '1';
+  currentHeaderTitle = sessionStorage.getItem('his-session-header-title') || 'OFFLINE Household Information';
+  currentHeaderSub = sessionStorage.getItem('his-session-header-sub') || 'Anabu II-C Resident Registry';
+  let savedPage = sessionStorage.getItem('his-session-page') || 'dashboard';
+  let savedFilters = getFilterState();
+  page = Number(savedFilters.page) || 0;
+
+  openApp(savedPage);
+
+  // Restore unsaved resident form draft if it was open before reload
+  try {
+    let draft = JSON.parse(sessionStorage.getItem('his-session-draft') || 'null');
+    if (draft && draft.open && draft.values) {
+      $('residentForm').reset();
+      $('rid').value = draft.rid || '';
+      $('formTitle').textContent = draft.formTitle || (draft.rid ? 'Edit resident' : 'Add resident');
+      fields.forEach(f => {
+        if (f !== 'subloc') $(f).value = draft.values[f] ?? '';
+      });
+      locLogic(draft.values.subloc || '');
+      checkDuplicateUI();
+      $('recordDialog').showModal();
+    }
+  } catch {
+    clearDraft();
+  }
+}
 
 async function start() {
   fillSelects();
   db = await openDB();
   await initAuthDB();
   await getAll();
-  await setLock();
+  await restoreSessionIfActive();
 }
 start();
 
